@@ -84,3 +84,18 @@ testlist:
     <<: *common_test_config_lgcc
     iterations: 1
     asm_tests: <path_var>/custom/cv_xif/cvxif_u_mode.S
+
+  - test: cvxif_cycle_count
+    <<: *common_test_config_lgcc
+    iterations: 1
+    asm_tests: <path_var>/custom/cv_xif/cvxif_cycle_count.S
+
+  - test: cvxif_add_curve
+    <<: *common_test_config_lgcc
+    iterations: 1
+    asm_tests: <path_var>/custom/cv_xif/cvxif_add_curve.S
+
+  - test: cvxif_frontend_probe
+    <<: *common_test_config_lgcc
+    iterations: 1
+    asm_tests: <path_var>/custom/cv_xif/cvxif_frontend_probe.S
