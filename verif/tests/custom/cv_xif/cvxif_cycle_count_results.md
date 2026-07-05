@@ -15,22 +15,32 @@ Every custom instruction in the example coprocessor takes **exactly the same
 number of cycles as a normal integer `ADD`** — the coprocessor adds **zero
 latency / stall overhead** relative to the core ALU.
 
-| Instruction | Cycles / 64 issued | Cycles per instruction |
+| Instruction | Cycles / 256 issued | Cycles per instruction |
 |---|---:|---:|
-| `c.nop` (baseline, no datapath) | 57 | ~0.9 (nops are squashed) |
-| `add` (baseline, **core ALU**) | 112 | **1.75** |
-| `cus_nop` | 112 | **1.75** |
-| `cus_add` | 112 | **1.75** |
-| `cus_double_rs1` | 112 | **1.75** |
-| `cus_double_rs2` | 112 | **1.75** |
-| `cus_add_multi` | 112 | **1.75** |
-| `cus_add_rs3_madd` | 112 | **1.75** |
-| `cus_add_rs3_msub` | 112 | **1.75** |
-| `cus_add_rs3_nmadd` | 112 | **1.75** |
-| `cus_add_rs3_nmsub` | 112 | **1.75** |
+| `c.nop` (baseline, no datapath) | 225 | ~0.88 (nops are squashed) |
+| `add` (baseline, **core ALU**) | 448 | **1.750** |
+| `cus_nop` | 426 | ~1.66 |
+| `cus_add` | 448 | **1.750** |
+| `cus_double_rs1` | 448 | **1.750** |
+| `cus_double_rs2` | 448 | **1.750** |
+| `cus_add_multi` | 448 | **1.750** |
+| `cus_add_rs3_madd` | 448 | **1.750** |
+| `cus_add_rs3_msub` | 448 | **1.750** |
+| `cus_add_rs3_nmadd` | 448 | **1.750** |
+| `cus_add_rs3_nmsub` | 448 | **1.750** |
+| `mul` (independent dests) | 449 | **1.753** |
+| `mul` (dependent chain) | 515 | **2.011** |
 
-The 32-copy run gives the same per-instruction figure (56 ÷ 32 = 1.75),
-confirming the result scales linearly with **no fixed measurement overhead**.
+Each instruction is issued **256 times** (unrolled). Scaling the count from
+64→256 multiplies every delta by ~4 (e.g. `add` 112→448, `mul`-chain
+131→515), confirming the measurement is linear with no hidden fixed cost.
+
+The fetch-bound CPI for 32-bit instructions lands in the **1.5–1.8** range
+depending on instruction alignment in the I-cache (`cus_nop` in particular
+moves with layout — it is still fetch-bound, just better/worse aligned).
+The relative findings are stable: every custom instruction matches a native
+`add`, and only the **dependent `mul` chain** is slower, because that is the
+one case that is latency-bound rather than fetch-bound (see §5).
 
 ---
 
@@ -112,13 +122,22 @@ Key methodological points:
 ### Reading the result out
 
 The Verilator testbench does not capture `printf` text, but its commit trace
-logs every store as `mem <addr> <value>`. The `results` table lands at
-`0x80007000`, so the deltas are extracted with, e.g.:
+logs every store as `mem <addr> <value>`. The `results` table address depends
+on code layout (it was `0x80007000` at 64 copies, `0x80009000` at 256 copies),
+so look it up from the symbol and grep that range:
 
 ```bash
-grep -E "mem 0x8000(70[0-2][0-9a-f])" \
-  verif/sim/out_*/veri-testharness_sim/cvxif_cycle_count.cv32a65x.log
+O=$(ls -t verif/sim/out_*/directed_tests/cvxif_cycle_count.o | head -1)
+B=$($RISCV/bin/riscv-none-elf-nm -n "$O" | awk '/ results$/{print $1}')
+LOG=$(ls -t verif/sim/out_*/veri-testharness_sim/cvxif_cycle_count.cv32a65x.log | head -1)
+for i in $(seq 0 12); do
+  off=$(printf '%03x' $((i*4)))
+  grep -oE "mem 0x${B%???}${off} 0x[0-9a-f]+" "$LOG"   # slot $i
+done
 ```
+
+(13 slots: 0=`c.nop`, 1=`add`, 2=`cus_nop`, 3–10=`cus_*`, 11=`mul` indep,
+12=`mul` chain.)
 
 ## 4. How to run
 
@@ -176,6 +195,26 @@ exactly why they all measure identically. The coprocessor's own execution is
 1 cycle (`copro_alu.sv`), with **zero extra latency or stall** versus the core
 ALU. Replacing a `cus_*` with a native `add` would not change the cycle count;
 only compressing the encoding (not possible for these custom opcodes) would.
+
+### Integer multiply (`mul`) — throughput vs latency
+
+Two `mul` cases are measured to show how a multi-cycle functional unit behaves:
+
+- **Independent `mul`** (rotating destinations): **1.76 CPI**, i.e. essentially
+  the same as `add`. `core/mult.sv:47-53` calls the multiplier "a dumb
+  pipelined multiplier" that is "unconditionally ready to accept new requests",
+  so back-to-back independent multiplies overlap in its pipeline and the
+  bottleneck stays the frontend — exactly like `add`.
+- **Dependent `mul` chain** (`mul t0, t0, t0`, serial): **2.04 CPI**. Here each
+  multiply must wait for the previous result, so the multiplier's own latency
+  is exposed: ~2 cycles per chained multiply (vs ~1.75 when fetch-bound).
+
+The contrast is the point: a "heavy" op like `mul` looks just as cheap as
+`add` *as long as it is not on the critical data-dependency path* — confirming
+again that the 1.75 CPI floor in this testbench is the fetch bandwidth, not
+any functional unit. The CVXIF custom instructions, being 1-cycle and
+pipelined through `copro_alu`, would behave the same way (fetch-bound when
+independent, 1-cycle latency on a dependent chain).
 
 ## 6. Files
 

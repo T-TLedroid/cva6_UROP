@@ -31,7 +31,7 @@
 #include "cvxif_macros.h"
 #include "../env/encoding.h"
 
-#define REP 8           // each arithmetic block = 8 instructions x REP(8) = 64 copies
+#define REP 32           // each arithmetic block = 8 instructions x REP(32) = 256 copies
 #define RES_OFF(n) (n*4)
 // Destination registers are ROTATED through a pool of caller-saved temporaries
 // (t0,t5,t6,a3,a4,a5,a6,a7) so that consecutive measured instructions never
@@ -52,7 +52,7 @@ main:
     // Baseline 0: compressed NOP (no coprocessor)
     // ====================================================================
     csrr  t1, mcycle
-    .rept 64
+    .rept 256
     c.nop
     .endr
     csrr  t2, mcycle
@@ -78,10 +78,43 @@ main:
     sw    t3, RES_OFF(1)(t4)
 
     // ====================================================================
+    // Baseline 2: normal integer MUL, independent dests (core multiplier,
+    // pipelined -> throughput-bound by the frontend, like add)
+    // ====================================================================
+    csrr  t1, mcycle
+    .rept REP
+    mul   t0, a0, a1
+    mul   t5, a0, a1
+    mul   t6, a0, a1
+    mul   a3, a0, a1
+    mul   a4, a0, a1
+    mul   a5, a0, a1
+    mul   a6, a0, a1
+    mul   a7, a0, a1
+    .endr
+    csrr  t2, mcycle
+    sub   t3, t2, t1
+    sw    t3, RES_OFF(11)(t4)
+
+    // ====================================================================
+    // Baseline 3: DEPENDENT MUL chain (mul t0 <- t0 * a1, serial)
+    // Exposes the multiplier's per-instruction latency (~2 cyc): each mul
+    // reads the previous result, so no pipelining overlap is possible.
+    // ====================================================================
+    mv    t0, a0            // seed chain (outside the measurement window)
+    csrr  t1, mcycle
+    .rept 256
+    mul   t0, t0, a1
+    .endr
+    csrr  t2, mcycle
+    sub   t3, t2, t1
+    sw    t3, RES_OFF(12)(t4)
+
+    // ====================================================================
     // CVXIF: CUS_NOP
     // ====================================================================
     csrr  t1, mcycle
-    .rept 64
+    .rept 256
     cus_nop
     .endr
     csrr  t2, mcycle
@@ -250,3 +283,5 @@ results:
     .word 0   // 8  cus_add_rs3_msub
     .word 0   // 9  cus_add_rs3_nmadd
     .word 0   // 10 cus_add_rs3_nmsub
+    .word 0   // 11 baseline: mul (independent, throughput)
+    .word 0   // 12 baseline: mul (dependent chain, latency)
