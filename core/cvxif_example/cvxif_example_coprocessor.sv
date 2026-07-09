@@ -55,12 +55,18 @@ module cvxif_example_coprocessor
   logic [4:0] issue_rd, rd;
   logic [XLEN-1:0] result;
   logic            we;
+  // Raised by copro_alu while a MAC is in its second (accumulate) stage.
+  // Holds the host off issuing a new instruction so the pending MAC result is
+  // not overwritten at the single result register.
+  logic            alu_busy;
 
   // Issue and Register interface
   // Mandatory when X_ISSUE_REGISTER_SPLIT = 0
   assign cvxif_resp_o.compressed_ready = compressed_ready;
   assign cvxif_resp_o.compressed_resp  = compressed_resp;
-  assign cvxif_resp_o.issue_ready      = issue_ready;
+  // Stall the host (issue + register, which share the ready) while a MAC is
+  // being accumulated: the result register is busy for one extra cycle.
+  assign cvxif_resp_o.issue_ready      = issue_ready && ~alu_busy;
   assign cvxif_resp_o.issue_resp       = issue_resp;
   assign cvxif_resp_o.register_ready   = cvxif_resp_o.issue_ready;
 
@@ -135,7 +141,8 @@ module cvxif_example_coprocessor
       .result_o   (result),
       .valid_o    (alu_valid),
       .rd_o       (rd),
-      .we_o       (we)
+      .we_o       (we),
+      .busy_o     (alu_busy)
   );
 
   always_comb begin

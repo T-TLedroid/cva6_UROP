@@ -58,6 +58,12 @@
     .insn r NMSUB, 0x0, 0x0, \rd, \rs1, \rs2, \rs3
 .endm
 
+# CUS_MAC rd, rs1, rs2, rs3 -> rd = (rs1 * rs2) + rs3
+# Integer multiply-accumulate, low 32/64 bits. .insn r MADD, 0x1, 0x0, rd, rs1, rs2, rs3
+.macro  cus_mac rd, rs1, rs2, rs3
+    .insn r MADD, 0x1, 0x0, \rd, \rs1, \rs2, \rs3
+.endm
+
 # CUS_ADD_RS3_RTYPE rs3, rs1, rs2 -> .insn r MADD, 0x1, 0x4, rs3, rs1, rs2
 .macro  cus_add_rs3_rtype rs1, rs2, rs3
     .insn r MADD, 0x1, 0x4, \rs3, \rs1, \rs2

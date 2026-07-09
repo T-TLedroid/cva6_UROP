@@ -22,6 +22,7 @@ package cvxif_instr_pkg;
     MSUB_RS3_R4 = 4'b0111,
     NMADD_RS3_R4 = 4'b1000,
     NMSUB_RS3_R4 = 4'b1001,
+    MAC = 4'b1010,
     ADD_RS3_R = 4'b1111
   } opcode_t;
 
@@ -52,7 +53,7 @@ package cvxif_instr_pkg;
   } copro_compressed_resp_t;
 
   // 4 Possible RISCV instructions for Coprocessor
-  parameter int unsigned NbInstr = 10;
+  parameter int unsigned NbInstr = 11;
   parameter copro_issue_resp_t CoproInstr[NbInstr] = '{
       '{
           // Custom Nop
@@ -133,6 +134,17 @@ package cvxif_instr_pkg;
           mask: 32'b00000_11_00000_00000_1_11_00000_1111111,
           resp : '{accept : 1'b1, writeback : 1'b1, register_read : {1'b1, 1'b1, 1'b1}},
           opcode : NMADD_RS3_R4
+      },
+      '{
+          // Custom integer Multiply-Accumulate : cus_mac rd, rs1, rs2, rs3
+          // Computes rd = (rs1 * rs2) + rs3, low XLEN bits.
+          // MADD opcode (R4-type) distinguished from the add-only MADD_RS3_R4
+          // by funct3 = 0x1 (MADD_RS3_R4 uses funct3 = 0x0).
+          instr:
+          32'b00000_00_00000_00000_0_01_00000_1000011,  // MADD opcode, funct3 = 001
+          mask: 32'b00000_11_00000_00000_1_11_00000_1111111,
+          resp : '{accept : 1'b1, writeback : 1'b1, register_read : {1'b1, 1'b1, 1'b1}},
+          opcode : MAC
       }
   };
 

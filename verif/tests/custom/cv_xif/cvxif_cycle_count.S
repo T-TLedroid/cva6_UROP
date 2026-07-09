@@ -265,6 +265,31 @@ main:
     sub   t3, t2, t1
     sw    t3, RES_OFF(10)(t4)
 
+    // ====================================================================
+    // CVXIF: CUS_MAC  (rd = (rs1 * rs2) + rs3)
+    // Integer multiply-accumulate. On the default 2-read-port config rs3 is
+    // not forwarded, so it computes rd = rs1 * rs2. Unlike every other opcode,
+    // MAC is pipelined over TWO cycles in copro_alu.sv (multiply registered in
+    // stage 1, accumulate add in stage 2), with the host stalled for one cycle
+    // via issue_ready while the result is pending. Back-to-back MACs therefore
+    // cannot overlap, so even with independent destinations this measures ~2
+    // cyc/insn (matching a dependent mul chain), not the 1.75 fetch-bound floor.
+    // ====================================================================
+    csrr  t1, mcycle
+    .rept REP
+    cus_mac t0, a0, a1, a2
+    cus_mac t5, a0, a1, a2
+    cus_mac t6, a0, a1, a2
+    cus_mac a3, a0, a1, a2
+    cus_mac a4, a0, a1, a2
+    cus_mac a5, a0, a1, a2
+    cus_mac a6, a0, a1, a2
+    cus_mac a7, a0, a1, a2
+    .endr
+    csrr  t2, mcycle
+    sub   t3, t2, t1
+    sw    t3, RES_OFF(13)(t4)
+
     // ---- terminate cleanly (pass) ---------------------------------------
     li    a0, 0
     jal   exit
@@ -285,3 +310,4 @@ results:
     .word 0   // 10 cus_add_rs3_nmsub
     .word 0   // 11 baseline: mul (independent, throughput)
     .word 0   // 12 baseline: mul (dependent chain, latency)
+    .word 0   // 13 cus_mac (rd = rs1*rs2 + rs3)

@@ -45,6 +45,11 @@ testlist:
     iterations: 1
     asm_tests: <path_var>/custom/cv_xif/cvxif_full.S
 
+  - test: cvxif_mac
+    <<: *common_test_config_lgcc
+    iterations: 1
+    asm_tests: <path_var>/custom/cv_xif/cvxif_mac.S
+
   - test: cvxif_multi
     <<: *common_test_config
     iterations: 0

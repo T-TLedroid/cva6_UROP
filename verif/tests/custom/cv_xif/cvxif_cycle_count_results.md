@@ -12,8 +12,11 @@ CVA6 RTL.
 ## TL;DR
 
 Every custom instruction in the example coprocessor takes **exactly the same
-number of cycles as a normal integer `ADD`** — the coprocessor adds **zero
-latency / stall overhead** relative to the core ALU.
+number of cycles as a normal integer `ADD`** — **except `cus_mac`**, which is
+pipelined over two cycles (multiply registered in stage 1, accumulate add in
+stage 2, host stalled for one cycle). The coprocessor adds **zero latency /
+stall overhead** relative to the core ALU for the 1-cycle opcodes; `cus_mac`
+alone exposes ~2-cycle latency.
 
 | Instruction | Cycles / 256 issued | Cycles per instruction |
 |---|---:|---:|
@@ -28,6 +31,7 @@ latency / stall overhead** relative to the core ALU.
 | `cus_add_rs3_msub` | 448 | **1.750** |
 | `cus_add_rs3_nmadd` | 448 | **1.750** |
 | `cus_add_rs3_nmsub` | 448 | **1.750** |
+| `cus_mac` (rd = rs1*rs2 + rs3) — **2-cycle** | 514 | **2.008** |
 | `mul` (independent dests) | 449 | **1.753** |
 | `mul` (dependent chain) | 515 | **2.011** |
 
@@ -46,8 +50,8 @@ one case that is latency-bound rather than fetch-bound (see §5).
 
 ## 1. The example coprocessor
 
-`core/cvxif_example/` implements 10 custom instructions (see
-`include/cvxif_instr_pkg.sv`). Nine are exercised here:
+`core/cvxif_example/` implements 11 custom instructions (see
+`include/cvxif_instr_pkg.sv`). Ten are exercised here:
 
 | Macro | Operation | Encoding |
 |---|---|---|
@@ -60,6 +64,7 @@ one case that is latency-bound rather than fetch-bound (see §5).
 | `cus_add_rs3_msub`   | rd = rs1 - rs2 - rs3                 | MSUB     |
 | `cus_add_rs3_nmadd`  | rd = -(rs1 + rs2 + rs3)              | NMADD    |
 | `cus_add_rs3_nmsub`  | rd = -(rs1 - rs2 - rs3)              | NMSUB    |
+| `cus_mac rd,rs1,rs2,rs3` | rd = (rs1 * rs2) + rs3           | MADD (funct3=1) |
 
 ## 2. RTL analysis (`copro_alu.sv`)
 
@@ -81,6 +86,15 @@ Every supported opcode asserts `valid_n = 1'b1` the cycle after issue
 (`copro_alu.sv:55-129`); only the illegal/default case deasserts it
 (`copro_alu.sv:135`). **So each instruction completes in 1 cycle** (issue at
 cycle T → result + `valid` at T+1) — there is no multi-cycle handshake.
+
+**Exception — `cus_mac` is 2-cycle.** The MAC (`rd = (rs1*rs2) + rs3`) is
+pipelined: the multiply is registered in a stage-1 register and the accumulate
+add is performed in stage 2 (the output register). A `busy` flag is raised
+during stage 2 and gates `issue_ready`, so the host is held for one cycle while
+the pending MAC result is emitted (issue at T → busy/stall at T+1 → result at
+T+2). This keeps the multiply and the add out of one combinational cone — see
+the note in `copro_alu.sv`. All other opcodes remain the pure 1-cycle path
+above.
 
 The empirical result below confirms this: the custom instructions are not
 slower than a native ALU operation.
@@ -130,14 +144,14 @@ so look it up from the symbol and grep that range:
 O=$(ls -t verif/sim/out_*/directed_tests/cvxif_cycle_count.o | head -1)
 B=$($RISCV/bin/riscv-none-elf-nm -n "$O" | awk '/ results$/{print $1}')
 LOG=$(ls -t verif/sim/out_*/veri-testharness_sim/cvxif_cycle_count.cv32a65x.log | head -1)
-for i in $(seq 0 12); do
+for i in $(seq 0 13); do
   off=$(printf '%03x' $((i*4)))
   grep -oE "mem 0x${B%???}${off} 0x[0-9a-f]+" "$LOG"   # slot $i
 done
 ```
 
-(13 slots: 0=`c.nop`, 1=`add`, 2=`cus_nop`, 3–10=`cus_*`, 11=`mul` indep,
-12=`mul` chain.)
+(14 slots: 0=`c.nop`, 1=`add`, 2=`cus_nop`, 3–10=`cus_*`, 11=`mul` indep,
+12=`mul` chain, 13=`cus_mac`.)
 
 ## 4. How to run
 
@@ -195,6 +209,14 @@ exactly why they all measure identically. The coprocessor's own execution is
 1 cycle (`copro_alu.sv`), with **zero extra latency or stall** versus the core
 ALU. Replacing a `cus_*` with a native `add` would not change the cycle count;
 only compressing the encoding (not possible for these custom opcodes) would.
+
+**`cus_mac` is the exception** (2.008 cyc/insn). It is a 2-cycle pipelined
+MAC whose stage-2 stall prevents back-to-back overlap, so — like a dependent
+`mul` chain — it is latency-bound at ~2 cycles rather than fetch-bound at
+1.75. This is by design: splitting multiply and accumulate across two cycles
+keeps the 32×32 multiply out of the same combinational cone as the add (which
+would otherwise be the longest path in the unit and longer than the core's own
+1-stage `mul`).
 
 ### Integer multiply (`mul`) — throughput vs latency
 
