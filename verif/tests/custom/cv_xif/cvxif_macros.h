@@ -64,6 +64,23 @@
     .insn r MADD, 0x1, 0x0, \rd, \rs1, \rs2, \rs3
 .endm
 
+# CUS_DELAY rd, rs1, lat -> rd = rs1 after (1<<lat) engine cycles (pure latency
+# probe). lat in {0..4} -> 1,2,4,8,16 cycles, encoded in funct7[2:0]
+# (funct7[6:3]=0 is the fixed base). CUSTOM-3 opcode, funct3 = 0x2. rs2 field is
+# unused (x0); the coprocessor reads only rs1.
+.macro  cus_delay rd, rs1, lat
+    .insn r CUSTOM_3, 0x2, \lat, \rd, \rs1, x0
+.endm
+
+# CUS_CDFG_DEMO rd, rs1, rs2, rs3, lat -> rd = ((rs1 * rs2) + rs3) ^ (rs1 + rs3)
+# executed by the CDFG engine as three stages (stage 1 runs the two parallel
+# paths), each (1<<lat) cycles. lat in {0..3} -> 1,2,4,8 cycles per stage,
+# encoded in funct2[1:0]. MADD opcode (R4-type), funct3 = 0x2 (distinct from
+# cus_mac's funct3 = 0x1). Requires NrRgprPorts = 3 so rs3 is forwarded.
+.macro  cus_cdfg_demo rd, rs1, rs2, rs3, lat
+    .insn r MADD, 0x2, \lat, \rd, \rs1, \rs2, \rs3
+.endm
+
 # CUS_ADD_RS3_RTYPE rs3, rs1, rs2 -> .insn r MADD, 0x1, 0x4, rs3, rs1, rs2
 .macro  cus_add_rs3_rtype rs1, rs2, rs3
     .insn r MADD, 0x1, 0x4, \rs3, \rs1, \rs2

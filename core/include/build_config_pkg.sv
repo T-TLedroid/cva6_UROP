@@ -93,8 +93,12 @@ package build_config_pkg;
     cfg.XF16ALTVec = bit'(XF16ALTVec);
     cfg.XF8Vec = bit'(XF8Vec);
     // Can take 2 or 3 in single issue. 4 or 6 in dual issue.
-    cfg.NrRgprPorts = unsigned'(CVA6Cfg.SuperscalarEn ? 4 : 2);
-    // cfg.NrRgprPorts = unsigned'(CVA6Cfg.SuperscalarEn ? 6 : 3);
+    // CV-X-IF targets get a third operand-per-instruction read port (3 in single
+    // issue, 6 in dual) so 3-operand custom ops receive rs3 (e.g. cus_cdfg_demo
+    // rd,rs1,rs2,rs3). Non-CV-X-IF targets keep the original 2/4-port count.
+    cfg.NrRgprPorts = unsigned'(CVA6Cfg.CvxifEn ? (CVA6Cfg.SuperscalarEn ? 6 : 3)
+                                                : (CVA6Cfg.SuperscalarEn ? 4 : 2));
+    // cfg.NrRgprPorts = unsigned'(CVA6Cfg.SuperscalarEn ? 4 : 2);
     cfg.NrWbPorts = unsigned'(NrWbPorts);
     cfg.EnableAccelerator = bit'(EnableAccelerator);
     cfg.PerfCounterEn = CVA6Cfg.PerfCounterEn;

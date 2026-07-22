@@ -176,7 +176,14 @@ module issue_stage
   // ---------------------------------------------------
   // Scoreboard (SB) <-> Issue and Read Operands (IRO)
   // ---------------------------------------------------
-  typedef logic [(CVA6Cfg.NrRgprPorts == 3 ? CVA6Cfg.XLEN : CVA6Cfg.FLen)-1:0] rs3_len_t;
+  // rs3_len_t is XLEN-wide whenever a single offloaded instruction carries three
+  // GPR operands (OPERANDS_PER_INSTR == NrRgprPorts/NrIssuePorts == 3), which is
+  // when rs3 is forwarded from the integer register file (e.g. CV-X-IF 3-operand
+  // custom ops); otherwise rs3 is an FP operand of FLen bits. The former `== 3`
+  // test only covered single-issue; use the per-instruction operand count so it
+  // also holds for superscalar cores (e.g. NrRgprPorts=6, NrIssuePorts=2).
+  typedef logic [((CVA6Cfg.NrRgprPorts / CVA6Cfg.NrIssuePorts) == 3 ? CVA6Cfg.XLEN :
+                  CVA6Cfg.FLen)-1:0] rs3_len_t;
   typedef struct packed {
     logic [CVA6Cfg.NR_SB_ENTRIES-1:0] still_issued;
     logic [CVA6Cfg.TRANS_ID_BITS-1:0] issue_pointer;

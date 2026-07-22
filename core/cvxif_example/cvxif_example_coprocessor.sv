@@ -60,13 +60,33 @@ module cvxif_example_coprocessor
   // not overwritten at the single result register.
   logic            alu_busy;
 
+  // CDFG engine signals (decoupled Direct-CI substrate for cus_delay /
+  // cus_cdfg_demo; see cdfg_engine.sv).
+  logic [2:0]      latency_sel;
+  logic            is_cdfg_op;
+  logic            cdfg_queue_free;
+  logic            cdfg_push;
+  logic            cdfg_result_valid;
+  logic            cdfg_grant;
+  hartid_t         cdfg_hartid;
+  id_t             cdfg_id;
+  logic [XLEN-1:0] cdfg_result;
+  logic [4:0]      cdfg_rd;
+  logic            cdfg_we;
+
   // Issue and Register interface
   // Mandatory when X_ISSUE_REGISTER_SPLIT = 0
   assign cvxif_resp_o.compressed_ready = compressed_ready;
   assign cvxif_resp_o.compressed_resp  = compressed_resp;
-  // Stall the host (issue + register, which share the ready) while a MAC is
-  // being accumulated: the result register is busy for one extra cycle.
-  assign cvxif_resp_o.issue_ready      = issue_ready && ~alu_busy;
+  // Issue acceptance is decoupled by opcode:
+  //  - CDFG ops (cus_delay / cus_cdfg_demo) are accepted only when the request
+  //    queue has a free entry (issue_ready = queue_has_free, NOT !engine_busy).
+  //  - the 1-cycle combinational ops keep the existing path, gated by the ALU
+  //    busy flag (MAC accumulate stage).
+  assign is_cdfg_op                    = (opcode == cvxif_instr_pkg::DELAY) ||
+                                         (opcode == cvxif_instr_pkg::CDFG_DEMO);
+  assign cvxif_resp_o.issue_ready      = is_cdfg_op ? (issue_ready && cdfg_queue_free)
+                                                    : (issue_ready && ~alu_busy);
   assign cvxif_resp_o.issue_resp       = issue_resp;
   assign cvxif_resp_o.register_ready   = cvxif_resp_o.issue_ready;
 
@@ -115,6 +135,7 @@ module cvxif_example_coprocessor
       .register_i      (register),
       .registers_o     (registers),
       .opcode_o        (opcode),
+      .latency_sel_o   (latency_sel),
       .hartid_o        (issue_hartid),
       .id_o            (issue_id),
       .rd_o            (issue_rd)
@@ -145,13 +166,70 @@ module cvxif_example_coprocessor
       .busy_o     (alu_busy)
   );
 
+  // A CDFG job is captured into the request queue on the cycle the host's
+  // issue/register handshake succeeds for a delay/cdfg opcode.
+  assign cdfg_push = issue_valid && is_cdfg_op && issue_ready && cdfg_queue_free;
+
+  cdfg_engine #(
+      .NrRgprPorts(NrRgprPorts),
+      .XLEN(XLEN),
+      .hartid_t(hartid_t),
+      .id_t(id_t),
+      .registers_t(registers_t),
+      .x_commit_t(x_commit_t)
+  ) i_cdfg_engine (
+      .clk_i          (clk_i),
+      .rst_ni         (rst_ni),
+      .issue_valid_i  (cdfg_push),
+      .opcode_i       (opcode),
+      .latency_sel_i  (latency_sel),
+      .hartid_i       (issue_hartid),
+      .id_i           (issue_id),
+      .rd_i           (issue_rd),
+      .registers_i    (registers),
+      .commit_valid_i (cvxif_req_i.commit_valid),
+      .commit_i       (cvxif_req_i.commit),
+      // The CDFG result is consumed only when it is granted the (shared) result
+      // interface AND the host is ready. The ALU result is a single-cycle pulse
+      // with no buffer, so it takes priority; the CDFG result waits in its
+      // buffer on any cycle the ALU is emitting.
+      .result_ready_i (cvxif_req_i.result_ready && cdfg_grant),
+      .queue_free_o   (cdfg_queue_free),
+      .result_valid_o (cdfg_result_valid),
+      .result_hartid_o(cdfg_hartid),
+      .result_id_o    (cdfg_id),
+      .result_data_o  (cdfg_result),
+      .result_rd_o    (cdfg_rd),
+      .result_we_o    (cdfg_we)
+  );
+
+  // Result arbitration: ALU has priority (no buffer, must emit immediately);
+  // the CDFG engine's buffered result is granted on any ALU-idle cycle.
+  assign cdfg_grant = cdfg_result_valid && !alu_valid;
+
   always_comb begin
-    cvxif_resp_o.result_valid  = alu_valid;  //TODO Should wait for ready from CPU
-    cvxif_resp_o.result.hartid = hartid;
-    cvxif_resp_o.result.id     = id;
-    cvxif_resp_o.result.data   = result;
-    cvxif_resp_o.result.rd     = rd;
-    cvxif_resp_o.result.we     = we;
+    if (alu_valid) begin
+      cvxif_resp_o.result_valid  = 1'b1;
+      cvxif_resp_o.result.hartid = hartid;
+      cvxif_resp_o.result.id     = id;
+      cvxif_resp_o.result.data   = result;
+      cvxif_resp_o.result.rd     = rd;
+      cvxif_resp_o.result.we     = we;
+    end else if (cdfg_result_valid) begin
+      cvxif_resp_o.result_valid  = 1'b1;
+      cvxif_resp_o.result.hartid = cdfg_hartid;
+      cvxif_resp_o.result.id     = cdfg_id;
+      cvxif_resp_o.result.data   = cdfg_result;
+      cvxif_resp_o.result.rd     = cdfg_rd;
+      cvxif_resp_o.result.we     = cdfg_we;
+    end else begin
+      cvxif_resp_o.result_valid  = 1'b0;
+      cvxif_resp_o.result.hartid = hartid;
+      cvxif_resp_o.result.id     = id;
+      cvxif_resp_o.result.data   = result;
+      cvxif_resp_o.result.rd     = rd;
+      cvxif_resp_o.result.we     = 1'b0;
+    end
   end
 
 

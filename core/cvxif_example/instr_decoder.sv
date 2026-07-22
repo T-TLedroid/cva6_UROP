@@ -30,6 +30,7 @@ module instr_decoder #(
     input  x_register_t         register_i,
     output registers_t          registers_o,
     output opcode_t             opcode_o,
+    output logic [2:0]          latency_sel_o,
     output hartid_t             hartid_o,
     output id_t                 id_o,
     output logic          [4:0] rd_o
@@ -54,6 +55,7 @@ module instr_decoder #(
     issue_resp_o.register_read = '0;
     registers_o                = '0;
     opcode_o                   = opcode_t'(0);  // == ILLEGAL see cvxif_instr_pkg.sv
+    latency_sel_o              = '0;
     hartid_o                   = '0;
     id_o                       = '0;
     rd_o                       = '0;
@@ -72,6 +74,15 @@ module instr_decoder #(
         id_o     = issue_req_i.id;
         hartid_o = issue_req_i.hartid;
         rd_o     = issue_req_i.instr[11:7];
+        // Latency selector for the decoupled CDFG ops. cus_delay carries
+        // lat_sel in funct7[2:0] (instr[27:25]); cus_cdfg_demo carries it in
+        // funct2[1:0] (instr[26:25], zero-extended to 3 bits). Ignored for the
+        // 1-cycle combinational opcodes.
+        case (CoproInstr[i].opcode)
+          cvxif_instr_pkg::DELAY:     latency_sel_o = issue_req_i.instr[27:25];
+          cvxif_instr_pkg::CDFG_DEMO: latency_sel_o = {1'b0, issue_req_i.instr[26:25]};
+          default:                    latency_sel_o = '0;
+        endcase
         for (int unsigned j = 0; j < NrRgprPorts; j++) begin
           registers_o[j] = issue_resp_o.register_read[j] ? register_i.rs[j] : '0;
         end

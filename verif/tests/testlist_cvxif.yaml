@@ -50,6 +50,16 @@ testlist:
     iterations: 1
     asm_tests: <path_var>/custom/cv_xif/cvxif_mac.S
 
+  - test: cvxif_delay
+    <<: *common_test_config_lgcc
+    iterations: 1
+    asm_tests: <path_var>/custom/cv_xif/cvxif_delay.S
+
+  - test: cvxif_cdfg_demo
+    <<: *common_test_config_lgcc
+    iterations: 1
+    asm_tests: <path_var>/custom/cv_xif/cvxif_cdfg_demo.S
+
   - test: cvxif_multi
     <<: *common_test_config
     iterations: 0
@@ -94,6 +104,11 @@ testlist:
     <<: *common_test_config_lgcc
     iterations: 1
     asm_tests: <path_var>/custom/cv_xif/cvxif_cycle_count.S
+
+  - test: cvxif_cpi_diff
+    <<: *common_test_config_lgcc
+    iterations: 1
+    asm_tests: <path_var>/custom/cv_xif/cvxif_cpi_diff.S
 
   - test: cvxif_add_curve
     <<: *common_test_config_lgcc

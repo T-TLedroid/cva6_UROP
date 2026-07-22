@@ -23,6 +23,8 @@ package cvxif_instr_pkg;
     NMADD_RS3_R4 = 4'b1000,
     NMSUB_RS3_R4 = 4'b1001,
     MAC = 4'b1010,
+    DELAY = 4'b1011,      // cus_delay     : rd = rs1+rs2 after (1<<lat_sel) engine cycles
+    CDFG_DEMO = 4'b1100,  // cus_cdfg_demo : rd = (rs1*rs2)*rs3, two-node chain
     ADD_RS3_R = 4'b1111
   } opcode_t;
 
@@ -53,7 +55,7 @@ package cvxif_instr_pkg;
   } copro_compressed_resp_t;
 
   // 4 Possible RISCV instructions for Coprocessor
-  parameter int unsigned NbInstr = 11;
+  parameter int unsigned NbInstr = 13;
   parameter copro_issue_resp_t CoproInstr[NbInstr] = '{
       '{
           // Custom Nop
@@ -145,6 +147,34 @@ package cvxif_instr_pkg;
           mask: 32'b00000_11_00000_00000_1_11_00000_1111111,
           resp : '{accept : 1'b1, writeback : 1'b1, register_read : {1'b1, 1'b1, 1'b1}},
           opcode : MAC
+      },
+      '{
+          // Custom configurable-latency delay : cus_delay rd, rs1, lat
+          //   rd = rs1 after (1 << lat_sel) engine cycles (pure latency probe).
+          // lat_sel is encoded in funct7[2:0] (0..4 -> 1,2,4,8,16); funct7[6:3]=0000 is
+          // the fixed base. The mask leaves funct7[2:0] don't-care so all five
+          // latencies decode to this single opcode (lat_sel read from instr in
+          // instr_decoder). CUSTOM-3 opcode, funct3 = 010. Reads only rs1.
+          instr:
+          32'b00000_00_00000_00000_0_10_00000_1111011,
+          mask: 32'b11110_00_00000_00000_1_11_00000_1111111,
+          resp : '{accept : 1'b1, writeback : 1'b1, register_read : {1'b0, 1'b0, 1'b1}},
+          opcode : DELAY
+      },
+      '{
+          // Custom multi-node CDFG demo : cus_cdfg_demo rd, rs1, rs2, rs3, lat
+          //   rd = ((rs1 * rs2) + rs3) ^ (rs1 + rs3)
+          // executed by the CDFG engine as three stages (stage 1 runs the two
+          // parallel paths), each taking (1 << lat_sel) cycles.
+          // lat_sel is encoded in funct2[1:0] (0..3 -> 1,2,4,8 per stage); MADD
+          // opcode (R4-type) with funct3 = 010 distinguishes it from cus_mac
+          // (funct3 = 001). funct2 and rs3 are don't-care in the mask (rs3 is the
+          // operand). Reads rs1, rs2, rs3.
+          instr:
+          32'b00000_00_00000_00000_0_10_00000_1000011,
+          mask: 32'b00000_00_00000_00000_1_11_00000_1111111,
+          resp : '{accept : 1'b1, writeback : 1'b1, register_read : {1'b1, 1'b1, 1'b1}},
+          opcode : CDFG_DEMO
       }
   };
 

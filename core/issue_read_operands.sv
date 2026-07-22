@@ -558,7 +558,11 @@ module issue_read_operands
     assign rs3[i] = fwd_res[idx_hzd_rs3[i]];
     assign rs3_valid[i] = fwd_res_valid[idx_hzd_rs3[i]];
 
-    if (CVA6Cfg.NrRgprPorts == 3) begin
+    // rs3 is a full XLEN GPR operand whenever an offloaded instruction carries
+    // three GPR operands (NrRgprPorts/NrIssuePorts == 3, e.g. CV-X-IF 3-operand
+    // custom ops incl. superscalar NrRgprPorts=6/NrIssuePorts=2); otherwise rs3
+    // is an FP operand of FLen bits. Formerly gated on `NrRgprPorts == 3` only.
+    if ((CVA6Cfg.NrRgprPorts / CVA6Cfg.NrIssuePorts) == 3) begin
       assign rs3_res[i] = rs3[i][CVA6Cfg.XLEN-1:0];
     end else begin
       assign rs3_res[i] = rs3[i][CVA6Cfg.FLen-1:0];
