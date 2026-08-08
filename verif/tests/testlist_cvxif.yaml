@@ -60,6 +60,16 @@ testlist:
     iterations: 1
     asm_tests: <path_var>/custom/cv_xif/cvxif_cdfg_demo.S
 
+  - test: autoisa_direct_ci_correctness
+    <<: *common_test_config_lgcc
+    iterations: 1
+    asm_tests: <path_var>/custom/cv_xif/autoisa_direct_ci_correctness.c
+
+  - test: autoisa_direct_ci_overlap
+    <<: *common_test_config_lgcc
+    iterations: 1
+    asm_tests: <path_var>/custom/cv_xif/autoisa_direct_ci_overlap.S
+
   - test: cvxif_multi
     <<: *common_test_config
     iterations: 0

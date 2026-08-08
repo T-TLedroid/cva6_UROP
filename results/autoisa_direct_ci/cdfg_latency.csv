@@ -1,0 +1,12 @@
+op,lat,engine_lat,queue_wait,end_to_end,n
+CDFG_DEMO,3,24,1,26,1
+CDFG_DEMO,0,3,1,5,1
+DELAY,2,4,1,6,1
+CDFG_DEMO,0,3,1,5,1
+CDFG_DEMO,2,12,1,14,1
+# aggregated (op,lat,mean_engine_lat,n)
+# CDFG_DEMO,0,3.0,2
+# CDFG_DEMO,1,6.0,1
+# CDFG_DEMO,2,12.0,1
+# CDFG_DEMO,3,24.0,1
+# DELAY,2,4.0,1

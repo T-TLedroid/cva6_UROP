@@ -1,0 +1,4 @@
+# Minimal fileset for the cdfg_engine unit testbench.
+# Paths are relative to the repo root (run.sh cds there).
+core/cvxif_example/include/cvxif_instr_pkg.sv
+core/cvxif_example/cdfg_engine.sv

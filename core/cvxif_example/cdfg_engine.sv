@@ -403,9 +403,12 @@ module cdfg_engine
       nj.op_b        = registers_i[1];
       nj.op_c        = rs3_operand;
       // Fill the lowest empty slot (q0 first, then q1). After a pop above q0_d
-      // already holds the old q1, so this lands at the true tail.
-      if (!q0_d.valid) q0_d = nj;
-      else             q1_d = nj;
+      // already holds the old q1, so this lands at the true tail. If both slots
+      // are full, drop the offer: a protocol-compliant host never asserts
+      // issue_valid_i while queue_free_o is low (the coprocessor shell gates
+      // cdfg_push on queue_free), so this guard is purely defensive.
+      if (!q0_d.valid)        q0_d = nj;
+      else if (!q1_d.valid)   q1_d = nj;
     end
   end
 
